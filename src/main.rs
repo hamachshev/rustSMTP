@@ -3,6 +3,7 @@ use core::str;
 use std::io::{BufRead, BufReader};
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
+use std::thread;
 
 #[derive(Debug)]
 enum Command {
@@ -37,19 +38,26 @@ impl From<&str> for Command {
     }
 }
 fn main() -> Result<()> {
-    let listener = TcpListener::bind("127.0.0.1:2525")?;
+    let listener = TcpListener::bind("0.0.0.0:25")?;
 
-    if let Ok((mut writer_socket, addr)) = listener.accept() {
-        println!("recieved connection from: {}", addr);
-        let reader_socket = writer_socket.try_clone().context("cloning socket")?;
-        let mut buffreader = BufReader::new(&reader_socket);
-        let mut buffer = String::new();
-        writer_socket.write_all(b"220 localhost SMTP\r\n")?;
-        let message = get_email_message(&mut writer_socket, &mut buffreader, &mut buffer)?;
-        println!("{:#?}", message);
-    } else {
-        println!("connection failed");
+    for stream in listener.incoming() {
+        match stream {
+            Ok(stream) => {
+                thread::spawn(move || handle_connection(stream));
+            }
+            Err(_) => println!("connection failed"),
+        }
     }
+    Ok(())
+}
+
+fn handle_connection(mut writer_socket: TcpStream) -> Result<()> {
+    let reader_socket = writer_socket.try_clone().context("cloning socket")?;
+    let mut buffreader = BufReader::new(&reader_socket);
+    let mut buffer = String::new();
+    writer_socket.write_all(b"220 localhost SMTP\r\n")?;
+    let message = get_email_message(&mut writer_socket, &mut buffreader, &mut buffer)?;
+    println!("{:#?}", message);
     Ok(())
 }
 
